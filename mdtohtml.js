@@ -1,7 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
 const { marked } = require("marked");
 const markedKatex = require("marked-katex-extension");
 const { markedHighlight } = require("marked-highlight");
@@ -32,7 +30,40 @@ function preprocessMath(src) {
   return out;
 }
 
-const KATEX_DIST = path.join(__dirname, "node_modules", "katex", "dist");
+// Asset loading is injectable so the same renderer runs where there is no
+// project filesystem (Cloudflare Workers). See setAssetLoader().
+const nodeAssetLoader = {
+  hljsCss(file) {
+    const fs = require("fs");
+    const path = require("path");
+    return fs.readFileSync(
+      path.join(__dirname, "node_modules", "highlight.js", "styles", file),
+      "utf8",
+    );
+  },
+  katexCss() {
+    const fs = require("fs");
+    const path = require("path");
+    const katexDist = path.join(__dirname, "node_modules", "katex", "dist");
+
+    let css = fs.readFileSync(path.join(katexDist, "katex.min.css"), "utf8");
+
+    css = css.replace(/url\(fonts\/([^)]+\.woff2)\)/g, (match, file) => {
+      const fontPath = path.join(katexDist, "fonts", file);
+      const b64 = fs.readFileSync(fontPath).toString("base64");
+      return `url(data:font/woff2;base64,${b64})`;
+    });
+
+    css = css.replace(/,url\(fonts\/[^)]+\.woff\) format\("woff"\)/g, "");
+    css = css.replace(/,url\(fonts\/[^)]+\.ttf\) format\("truetype"\)/g, "");
+    return css;
+  },
+};
+
+let assetLoader = nodeAssetLoader;
+function setAssetLoader(loader) {
+  assetLoader = loader;
+}
 
 const THEMES = {
   light: {
@@ -71,10 +102,7 @@ const hljsCssCache = {};
 function loadHljsCss(themeName) {
   const theme = resolveTheme(themeName);
   if (hljsCssCache[theme.file]) return hljsCssCache[theme.file];
-  const css = fs.readFileSync(
-    path.join(__dirname, "node_modules", "highlight.js", "styles", theme.file),
-    "utf8",
-  );
+  const css = assetLoader.hljsCss(theme.file);
   hljsCssCache[theme.file] = css;
   return css;
 }
@@ -88,20 +116,8 @@ function codeBlockCss(themeName) {
 let cachedKatexCss = null;
 function loadKatexCss() {
   if (cachedKatexCss) return cachedKatexCss;
-
-  let css = fs.readFileSync(path.join(KATEX_DIST, "katex.min.css"), "utf8");
-
-  css = css.replace(/url\(fonts\/([^)]+\.woff2)\)/g, (match, file) => {
-    const fontPath = path.join(KATEX_DIST, "fonts", file);
-    const b64 = fs.readFileSync(fontPath).toString("base64");
-    return `url(data:font/woff2;base64,${b64})`;
-  });
-
-  css = css.replace(/,url\(fonts\/[^)]+\.woff\) format\("woff"\)/g, "");
-  css = css.replace(/,url\(fonts\/[^)]+\.ttf\) format\("truetype"\)/g, "");
-
-  cachedKatexCss = css;
-  return css;
+  cachedKatexCss = assetLoader.katexCss();
+  return cachedKatexCss;
 }
 
 const GITHUB_CSS = `
@@ -314,6 +330,8 @@ module.exports = {
   renderPreviewHtml,
   preprocessMath,
   topLevelSourceLines,
+  setAssetLoader,
+  nodeAssetLoader,
   THEMES,
   DEFAULT_THEME,
 };

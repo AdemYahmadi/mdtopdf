@@ -5,3 +5,8 @@ node_modules/
 npm-debug.log
 
 
+
+# Cloudflare Worker
+worker/assets.generated.js
+.wrangler/
+.dev.vars

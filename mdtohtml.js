@@ -24,7 +24,7 @@ function preprocessMath(src) {
     body.includes("\n") ? `$$\n${body.trim()}\n$$` : m,
   );
 
-  out = out.replace(/\n(\$(?!\$))/g, " $1");
+  out = out.replace(/\n(\$(?!\$))/g, "\n $1");
 
   out = out.replace(/\u0000MATHMASK(\d+)\u0000/g, (_, i) => stash[Number(i)]);
   return out;

@@ -101,7 +101,9 @@ function hasUnsavedWork() {
   return (
     cloudState === "dirty" ||
     cloudState === "error" ||
-    (cloudState === "unsaved" && editor.value.trim() !== "")
+    (cloudState === "unsaved" &&
+      editor.value.trim() !== "" &&
+      editor.value !== sample)
   );
 }
 
@@ -229,7 +231,21 @@ function triggerNewDocument() {
 }
 newDocBtn.addEventListener("click", triggerNewDocument);
 
-async function loadDocument(id) {
+function loadDocument(id) {
+  if (id !== currentDocId && hasUnsavedWork()) {
+    openConfirm({
+      title: "Discard unsaved changes?",
+      body: "You have unsaved changes. Discard them and open this document?",
+      actionLabel: "Open document",
+      onConfirm: () => {
+        openDocument(id);
+      },
+    });
+    return;
+  }
+  return openDocument(id);
+}
+async function openDocument(id) {
   showEditorView();
   if (id === currentDocId) return;
   const token = ++loadToken;

@@ -4,7 +4,8 @@
   "description": "Convert markdown (with LaTeX math) to PDF — CLI and web.",
   "main": "mdtohtml.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/"
   },
   "keywords": [],
   "author": "",

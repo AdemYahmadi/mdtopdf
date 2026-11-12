@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import { printToPdf, isRateLimited } from "./browser.js";
 import {
   renderMarkdownToHtml,
   renderPreviewHtml,
@@ -62,22 +63,6 @@ async function cacheKey(md, fontSize, theme) {
   return new Request(`https://pdf-cache.internal/${hex}`);
 }
 
-async function printToPdf(env, html, needsWait) {
-  const browser = await puppeteer.launch(env.BROWSER);
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "load" });
-    if (needsWait) {
-      await page
-        .waitForFunction("window.__mermaidDone === true", { timeout: 10000 })
-        .catch(() => {});
-    }
-    return await page.pdf({ preferCSSPageSize: true });
-  } finally {
-    await browser.close();
-  }
-}
-
 function pdfResponse(pdf) {
   return new Response(pdf, {
     headers: {
@@ -123,12 +108,25 @@ async function handleConvert(request, env, ctx) {
 
   try {
     const html = renderMarkdownToHtml(md, { fontSize, theme });
-    const pdf = await printToPdf(env, html, html.includes('class="mermaid"'));
+    const pdf = await printToPdf(
+      puppeteer,
+      env.BROWSER,
+      html,
+      html.includes('class="mermaid"'),
+    );
     const res = pdfResponse(pdf);
     ctx.waitUntil(cache.put(key, res.clone()));
     return res;
   } catch (err) {
     console.error("convert failed:", err);
+    if (isRateLimited(err)) {
+      const res = text(
+        "Conversion failed: the PDF renderer is busy. Wait a few seconds and try again.",
+        429,
+      );
+      res.headers.set("Retry-After", "10");
+      return res;
+    }
     return text("Conversion failed: " + err.message, 500);
   }
 }

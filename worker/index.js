@@ -121,7 +121,9 @@ async function handleConvert(request, env, ctx) {
     console.error("convert failed:", err);
     if (isRateLimited(err)) {
       const res = text(
-        "Conversion failed: the PDF renderer is busy. Wait a few seconds and try again.",
+        "Conversion failed: the PDF renderer is busy. Wait a few seconds and try again. (" +
+          err.message +
+          ")",
         429,
       );
       res.headers.set("Retry-After", "10");

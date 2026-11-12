@@ -10,3 +10,6 @@ npm-debug.log
 worker/assets.generated.js
 .wrangler/
 .dev.vars
+
+# Tests
+test/

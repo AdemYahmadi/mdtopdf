@@ -1,20 +1,49 @@
-export async function acquireBrowser(puppeteer, binding) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function connectIdle(puppeteer, binding) {
+  let sessions = [];
   try {
-    const sessions = await puppeteer.sessions(binding);
-    for (const s of sessions) {
-      if (s.connectionId) continue;
-      try {
-        return await puppeteer.connect(binding, s.sessionId);
-      } catch (_) {}
-    }
+    sessions = await puppeteer.sessions(binding);
   } catch (err) {
     console.warn("listing browser sessions failed:", err);
   }
-  return puppeteer.launch(binding);
+  for (const s of sessions) {
+    if (s.connectionId) continue;
+    try {
+      return { browser: await puppeteer.connect(binding, s.sessionId) };
+    } catch (_) {}
+  }
+  return { browser: null, sessions: sessions.length };
 }
 
-export async function printToPdf(puppeteer, binding, html, needsWait) {
-  const browser = await acquireBrowser(puppeteer, binding);
+export async function acquireBrowser(
+  puppeteer,
+  binding,
+  { waitMs = 5000, pollMs = 500 } = {},
+) {
+  const first = await connectIdle(puppeteer, binding);
+  if (first.browser) return first.browser;
+  try {
+    return await puppeteer.launch(binding);
+  } catch (err) {
+    if (!isRateLimited(err) || !first.sessions) throw err;
+    for (let waited = 0; waited < waitMs; waited += pollMs) {
+      await sleep(pollMs);
+      const next = await connectIdle(puppeteer, binding);
+      if (next.browser) return next.browser;
+    }
+    throw err;
+  }
+}
+
+export async function printToPdf(
+  puppeteer,
+  binding,
+  html,
+  needsWait,
+  acquireOptions,
+) {
+  const browser = await acquireBrowser(puppeteer, binding, acquireOptions);
   let page;
   let healthy = true;
   try {

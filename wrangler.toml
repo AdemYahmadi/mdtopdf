@@ -12,3 +12,6 @@ binding = "ASSETS"
 
 [browser]
 binding = "BROWSER"
+
+[previews.browser]
+binding = "BROWSER"

@@ -6,7 +6,7 @@ let activeFrame = document.getElementById("continuousFrameA");
 let bufferFrame = document.getElementById("continuousFrameB");
 
 let lastBlob = null,
-  pdfDirty = true;
+  lastBlobKey = null;
 let renderedContinuousKey = null;
 let busy = false,
   again = false,
@@ -29,8 +29,25 @@ async function fetchPreviewHtml() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ markdown: editor.value, fontSize, theme }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw await responseError(res);
   return res.text();
+}
+
+async function responseError(res) {
+  const err = new Error((await res.text()) || "HTTP " + res.status);
+  err.status = res.status;
+  return err;
+}
+
+function describeFailure(title, err) {
+  if (err && err.status === 429)
+    return (
+      title + " — the PDF renderer is busy, wait a few seconds and try again"
+    );
+  let detail = String((err && err.message) || "").trim();
+  if (!detail || detail.startsWith("<") || detail.length > 200)
+    detail = "try again, or simplify the document if it has large diagrams";
+  return title + " — " + detail.replace(/^(Conversion|Preview) failed:\s*/, "");
 }
 
 function showContinuousEmpty(msg) {
@@ -117,11 +134,12 @@ async function renderContinuous() {
     return;
   }
   busy = true;
+  const key = keyOf();
   setStatus("Rendering…", "busy");
   try {
     let html = await fetchPreviewHtml();
     html = html.replace("</head>", CONTINUOUS_STYLE + "</head>");
-    renderedContinuousKey = keyOf();
+    renderedContinuousKey = key;
     showContinuousEmpty(null);
 
     const anchor = captureContinuousAnchor(activeFrame.contentWindow);
@@ -141,16 +159,15 @@ async function renderContinuous() {
     watchAnchorSettle(activeFrame.contentWindow, anchor);
     setStatus("Ready");
   } catch (err) {
-    bufferFrame.removeAttribute("srcdoc");
-    renderedContinuousKey = null;
-    showContinuousEmpty(
-      "Preview unavailable — " + (err.message || "conversion failed"),
-    );
-    setStatus("Conversion failed", "error");
     console.error(err);
+    renderedContinuousKey = null;
+    if (key !== keyOf()) return;
+    bufferFrame.removeAttribute("srcdoc");
+    showContinuousEmpty(describeFailure("Preview unavailable", err));
+    setStatus("Conversion failed", "error");
   } finally {
     busy = false;
-    if (again) {
+    if (again || key !== keyOf()) {
       again = false;
       renderPreview();
     }
@@ -162,7 +179,6 @@ function renderPreview() {
   else renderPdf();
 }
 function schedulePreview() {
-  pdfDirty = true;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(renderPreview, 300);
 }
